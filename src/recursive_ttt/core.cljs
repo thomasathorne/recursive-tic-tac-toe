@@ -5,15 +5,16 @@
 
 (defn make-3x3 [x] [[x x x] [x x x] [x x x]])
 
-(defonce app-state
-  (atom
-   {:games (make-3x3 {:board [[{} {} {}]
-                              [{} {} {}]
-                              [{} {} {}]]
-                      :active true
-                      :turn "X"})
-    :active true
-    :turn "X"}))
+(def initial-state
+  {:board (make-3x3 {:board [[{} {} {}]
+                             [{} {} {}]
+                             [{} {} {}]]
+                     :active true
+                     :turn "X"})
+   :active true
+   :turn "X"})
+
+(defonce app-state (atom initial-state))
 
 (def switch {"X" "O" "O" "X"})
 
@@ -75,18 +76,41 @@
         (assoc :turn (switch player)))
     (assoc game :turn player)))
 
+(defn all-inactive
+  [game]
+  (update-in game [:board]
+             (fn [b]
+               (mapv (fn [r]
+                       (mapv #(assoc % :active false) r)) b))))
+
+(defn all-active
+  [game]
+  (update-in game [:board]
+             (fn [b]
+               (mapv (fn [r]
+                       (mapv #(assoc % :active (nil? (:result %))) r)) b))))
+
+(defn set-active
+  [{:keys [board] :as game} row col]
+  (if (get-in board [row col :result])
+    (all-active game)
+    (-> (all-inactive game)
+        (assoc-in [:board row col :active] true))))
+
 (defn metaplay
-  [{:keys [games] :as data} player m-row m-col row col]
-  (let [played (play (get-in data [:games m-row m-col]) player row col)]
-    (if (get-in played [:games m-row m-col :result])
+  [{:keys [board turn] :as data} m-row m-col row col]
+  (let [played (play (get-in data [:board m-row m-col]) turn row col)]
+    (if (get-in played [:board m-row m-col :result])
       (-> data
-          (assoc-in [:games m-row m-col] played)
-          (check-for-winner player m-row m-col)
+          (assoc-in [:board m-row m-col] played)
+          (check-for-winner turn m-row m-col)
           (check-for-draw)
-          (assoc :turn (:turn played)))
+          (assoc :turn (:turn played))
+          (set-active row col))
       (-> data
-          (assoc-in [:games m-row m-col] played)
-          (assoc :turn (:turn played))))))
+          (assoc-in [:board m-row m-col] played)
+          (assoc :turn (:turn played))
+          (set-active row col)))))
 
 (defn square
   [{:keys [result]} _ [m-row m-col row col data]]
@@ -103,8 +127,7 @@
                             (.log js/console "--")
                             (om/transact!
                              data
-                             #(metaplay % (:turn data)
-                                        m-row m-col row col))))}
+                             #(metaplay % m-row m-col row col))))}
              result]))))
 
 (defn ttt-component
@@ -141,10 +164,11 @@
              (for [col (range 3)]
                [:td
                 (om/build ttt-component
-                          (get-in data [:games row col])
+                          (get-in data [:board row col])
                           {:opts [row col data]})])])]]
         (if-let [winner (:result data)]
-          [:p (str "The winner: " winner)])]))))
+          [:p (str "The winner: " winner)]
+          [:p (str "It is " (:turn data) "'s turn.")])]))))
 
 (om/root
   (fn [data owner]
