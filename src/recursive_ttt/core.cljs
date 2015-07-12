@@ -101,7 +101,8 @@
   [{:keys [board turn] :as data} m-row m-col row col]
   (let [played (play (get-in data [:board m-row m-col]) turn row col)]
     (cond
-     (= played (get-in data [:board m-row m-col]))
+     (= (:board played)
+        (get-in data [:board m-row m-col :board]))
      data
 
      (get played :result)
