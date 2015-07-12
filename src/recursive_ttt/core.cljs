@@ -15,11 +15,6 @@
     :active true
     :turn "X"}))
 
-(defn metagame
-  [games]
-  {:board (mapv #(mapv (fn [x] {:contents (:result x)}) %)
-                games)})
-
 (def switch {"X" "O" "O" "X"})
 
 (defn row
@@ -52,7 +47,7 @@
 
 (defn winning-line
   [p line]
-  (= [p p p] (mapv :contents line)))
+  (= [p p p] (mapv :result line)))
 
 (defn check-for-winner
   [{:keys [board] :as game} player row col]
@@ -60,38 +55,60 @@
     (assoc game :result player :active false)
     game))
 
+(defn check-for-draw
+  [{:keys [board result] :as game}]
+  (if result
+    game
+    (if (every? (fn [row]
+                  (every? (fn [s]
+                            (not (nil? (:result s)))) row)) board)
+      (assoc game :result "Draw" :active false)
+      game)))
+
 (defn play
   [{:keys [board active] :as game} player row col]
   (if active
     (-> game
-        (assoc-in [:board row col] {:contents player})
+        (assoc-in [:board row col] {:result player})
         (check-for-winner player row col)
+        (check-for-draw)
         (assoc :turn (switch player)))
     (assoc game :turn player)))
 
+(defn metaplay
+  [{:keys [games] :as data} player m-row m-col row col]
+  (let [played (play (get-in data [:games m-row m-col]) player row col)]
+    (if (get-in played [:games m-row m-col :result])
+      (-> data
+          (assoc-in [:games m-row m-col] played)
+          (check-for-winner player m-row m-col)
+          (check-for-draw)
+          (assoc :turn (:turn played)))
+      (-> data
+          (assoc-in [:games m-row m-col] played)
+          (assoc :turn (:turn played))))))
+
 (defn square
-  [{:keys [contents]} _ [row col game]]
+  [{:keys [result]} _ [m-row m-col row col data]]
   (reify
     om/IRender
     (render [_]
-      (.log js/console (str "Render square " row " " col))
-      (html [(case contents
+      (.log js/console (str "Render square " m-row " " m-col " " row " " col))
+      (html [(case result
                "X" :div.square.X
                "O" :div.square.O
                :div.square)
-             {:on-click (if (nil? contents)
+             {:on-click (if (nil? result)
                           (fn [e]
-                            (let [g (om/transact!
-                                     game
-                                     #(play % (:turn @app-state)
-                                            row col))]
-                              (js/alert @g)
-                              (swap! app-state assoc :turn
-                                     (:turn @g)))))}
-             contents]))))
+                            (.log js/console "--")
+                            (om/transact!
+                             data
+                             #(metaplay % (:turn data)
+                                        m-row m-col row col))))}
+             result]))))
 
 (defn ttt-component
-  [{:keys [board result active] :as game} _]
+  [{:keys [board result active] :as game} _ [m-row m-col data]]
   (reify
     om/IRender
     (render [_]
@@ -108,7 +125,7 @@
                [:td
                 (om/build square
                           (get-in board [row col])
-                          {:opts [row col game]})])])]]]))))
+                          {:opts [m-row m-col row col data]})])])]]]))))
 
 (defn recursive-ttt-component
   [data _]
@@ -125,7 +142,7 @@
                [:td
                 (om/build ttt-component
                           (get-in data [:games row col])
-                          nil)])])]]
+                          {:opts [row col data]})])])]]
         (if-let [winner (:result data)]
           [:p (str "The winner: " winner)])]))))
 
