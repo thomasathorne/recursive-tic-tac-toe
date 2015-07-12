@@ -100,31 +100,35 @@
 (defn metaplay
   [{:keys [board turn] :as data} m-row m-col row col]
   (let [played (play (get-in data [:board m-row m-col]) turn row col)]
-    (if (get-in played [:board m-row m-col :result])
-      (-> data
-          (assoc-in [:board m-row m-col] played)
-          (check-for-winner turn m-row m-col)
-          (check-for-draw)
-          (assoc :turn (:turn played))
-          (set-active row col))
-      (-> data
-          (assoc-in [:board m-row m-col] played)
-          (assoc :turn (:turn played))
-          (set-active row col)))))
+    (cond
+     (= played (get-in data [:board m-row m-col]))
+     data
+
+     (get played :result)
+     (-> data
+         (assoc-in [:board m-row m-col] played)
+         (check-for-winner turn m-row m-col)
+         (check-for-draw)
+         (assoc :turn (:turn played))
+         (set-active row col))
+
+     :else
+     (-> data
+         (assoc-in [:board m-row m-col] played)
+         (assoc :turn (:turn played))
+         (set-active row col)))))
 
 (defn square
   [{:keys [result]} _ [m-row m-col row col data]]
   (reify
     om/IRender
     (render [_]
-      (.log js/console (str "Render square " m-row " " m-col " " row " " col))
       (html [(case result
                "X" :div.square.X
                "O" :div.square.O
                :div.square)
              {:on-click (if (nil? result)
                           (fn [e]
-                            (.log js/console "--")
                             (om/transact!
                              data
                              #(metaplay % m-row m-col row col))))}
